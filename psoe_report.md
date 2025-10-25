@@ -1,8 +1,8 @@
 # PSOE Optimization Report
 
-**Generated On:** 2025-10-25 11:27:04
+**Generated On:** 2025-10-25 12:22:01
 **Total Initial Low-Stock Items:** 9
-**Weekly Budget Provided:** **Rs 42000.00**
+**Weekly Budget Provided:** **Rs 56000.00**
 
 ---
 
@@ -12,11 +12,11 @@ The Procedural Stockflow Optimization Engine (PSOE) utilized the Greedy Knapsack
 
 |               Metric                   |        Value   |
 | :---                                   | :---           |
-| **Total Cost Spent**                   | **Rs 39789.00**|
-| **Remaining Budget**                   | **Rs 2211.00** |
-| **Total Expected Profit**              | **Rs 24223.50**|
-| **Items Selected for Reorder**         | 3              |
-| **Items Rejected (Budget Constraint)** | 6              |
+| **Total Cost Spent**                   | **Rs 52156.60**|
+| **Remaining Budget**                   | **Rs 3843.40** |
+| **Total Expected Profit**              | **Rs 27911.90**|
+| **Items Selected for Reorder**         | 6              |
+| **Items Rejected (Budget Constraint)** | 3              |
 
 ---
 
@@ -45,11 +45,14 @@ The following table shows the explicit ranking of all low-stock items. The optim
 
 These products were approved for reordering as their individual cost was within the remaining budget, prioritized by their high Profit/Cost ratio.
 
-| Product     |   Order Qty (Avg Monthly Sales) |   Budget Cost |   Expected Profit |
-|:------------|--------------------------------:|--------------:|------------------:|
-| Berry Juice |                            8085 |       21829.5 |           14553   |
-| Mango Drink |                            5352 |       10436.4 |            5619.6 |
-| Cola        |                            5787 |        7523.1 |            4050.9 |
+| Product         |   Order Qty (Avg Monthly Sales) |   Budget Cost |   Expected Profit |
+|:----------------|--------------------------------:|--------------:|------------------:|
+| Berry Juice     |                            8085 |       21829.5 |           14553   |
+| Mango Drink     |                            5352 |       10436.4 |            5619.6 |
+| Cola            |                            5787 |        7523.1 |            4050.9 |
+| Diet Soda       |                            2386 |        3340.4 |            1431.6 |
+| Cranberry Juice |                            8429 |        6743.2 |            1685.8 |
+| Diet Cola       |                            2855 |        2284   |             571   |
 ---
 
 ## 4. Rejected Items (Budget Constraint)
@@ -57,9 +60,6 @@ These products were approved for reordering as their individual cost was within 
 These products required reordering but their cost exceeded the remaining budget at the time the engine processed them. They should be prioritized for the next budget cycle.
 | Product          |   Required Cost |   Expected Profit |
 |:-----------------|----------------:|------------------:|
-| Diet Soda        |          3340.4 |            1431.6 |
-| Cranberry Juice  |          6743.2 |            1685.8 |
 | Cream Soda       |          7505.6 |            1876.4 |
-| Diet Cola        |          2284   |             571   |
 | Orange Juice     |          5909.6 |            1477.4 |
 | Strawberry Drink |          6144   |            1536   |
