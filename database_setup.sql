@@ -20,6 +20,9 @@ CREATE TABLE psoe_audit_log (
     status VARCHAR(50) NOT NULL
 );
 
+ALTER TABLE psoe_audit_log 
+ADD COLUMN run_type VARCHAR(50) NOT NULL DEFAULT 'OPTIMIZED';
+
 -- 3. Import the Data from CSV
 COPY inventory_data (product_id, product_name, current_stock, reorder_quantity, unit_cost, unit_price, low_stock_threshold)
     FROM 'D:\PSOE_Project\datasets\psoe_data_cleaned.csv'
