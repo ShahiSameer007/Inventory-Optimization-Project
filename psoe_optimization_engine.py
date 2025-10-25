@@ -5,17 +5,15 @@ import sys
 import os
 from datetime import datetime
 
-# --- CRITICAL FIX: Ensure these imports match your Python file names ---
 from psoe_visualization import generate_priority_chart, generate_budget_allocation_chart, generate_optimization_comparison_chart
-from psoe_report import generate_final_report
+from psoe_report import generate_final_report 
 
 # --- 1. CONFIGURATION ---
-# !! CRITICAL: UPDATE THESE PARAMETERS (if you haven't already) !!
 DB_PARAMS = {
     "host": "localhost",
     "database": "inventory_data",
-    "user": "psoe_user",        # Use your PostgreSQL application user
-    "password": "psoe_pass123"  # Use your actual password
+    "user": "psoe_user",        
+    "password": "psoe_pass123"  
 }
 
 # --- 2. OOP Implementation (Product Class) ---
@@ -27,14 +25,14 @@ class Product:
         self.name = name
         self.current_stock = int(current_stock)
         
-        # CRITICAL FIX: Convert Decimal from DB to float/int
+        # Convert Decimal from DB to float/int
         self.reorder_quantity = round(float(reorder_quantity)) 
         self.unit_cost = float(unit_cost)
         self.unit_price = float(unit_price)
         self.low_stock_threshold = float(low_stock_threshold)
         
-        # Derived values for DAA
-        self.order_cost = self.reorder_quantity * self.unit_cost     
+        # Derived values for Kapsack Algorithmic optimization
+        self.order_cost = self.reorder_quantity * self.unit_cost      
         self.order_value = self.reorder_quantity * (self.unit_price - self.unit_cost) 
 
     def calculate_priority_score(self):
@@ -100,48 +98,50 @@ def fetch_low_stock_products(db_params):
     return inventory_list
 
 
-def log_order_decision(db_params, product, status, budget_cost=0, run_type="OPTIMIZED"):
-    """Logs the reorder decision (SELECTED or REJECTED) to psoe_audit_log."""
-    conn = None
+def log_order_decision(conn, product, status, budget_cost=0, run_type="OPTIMIZED"):
+    """
+    Refactored to accept a persistent connection (conn) and logs the decision.
+    Does NOT commit or close the connection; that is handled in the main block.
+    """
+    if conn is None:
+        print(f"❌ FATAL: Database connection is missing for logging {product.name}.")
+        return
+
+    cursor = conn.cursor()
+    
     try:
-        conn = psycopg2.connect(**db_params)
-        cursor = conn.cursor()
-        
         log_data = (
             product.product_id, 
             float(product.reorder_quantity),
             float(budget_cost),
             status,
-            run_type # Added run_type to distinguish DAA vs Baseline
+            run_type
         )
         
-        # Updated SQL to include run_type column (assuming you added it to the audit table)
+        # SQL statement to insert the audit log entry
         sql = """
         INSERT INTO psoe_audit_log (product_id, order_quantity, budget_cost, status, run_type)
         VALUES (%s, %s, %s, %s, %s);
         """
-        cursor.execute(sql, log_data)
-        conn.commit()
+        cursor.execute(sql, log_data) 
         
     except psycopg2.Error as e:
-        print(f"❌ Error logging decision for {product.name}: {e}")
-        if conn:
-            conn.rollback()
+        # Note: Do not commit/rollback here, let the main block handle the full transaction.
+        print(f"❌ Error logging decision for {product.name}. SQL Error: {e}")
     finally:
-        if conn:
-            conn.close()
+        cursor.close()
 
 
-# --- 4. DAA Algorithm (0/1 Knapsack - Greedy Approach) ---
+# --- 4. Greedy Approach (0/1 Knapsack Algorithm) ---
 
-def run_daa_optimization(inventory_list, budget_limit):
+def run_knapsack_optimization(inventory_list, budget_limit):
     """
     Implements the Greedy 0/1 Knapsack algorithm for budgeted reordering.
     Sorts by priority_score (Profit/Cost Ratio).
     """
-    print(f"\n--- Running DAA OPTIMIZATION (Greedy Knapsack) ---")
+    print(f"\n--- Running Knapsack Algorithmic OPTIMIZATION ---")
     
-    # Step 1: Sort by Greedy Choice (Priority Score: Profit/Cost) -> OPTIMAL
+    # Sort by Greedy Choice (Priority Score: Profit/Cost)
     sorted_list = sorted(inventory_list, key=lambda item: item.calculate_priority_score(), reverse=True)
 
     current_budget = budget_limit
@@ -156,14 +156,11 @@ def run_daa_optimization(inventory_list, budget_limit):
             current_budget -= cost
             total_cost_spent += cost
             total_expected_profit += item.order_value
-            # Log only the final OPTIMIZED results
-            # log_order_decision(DB_PARAMS, item, "SELECTED", cost, "OPTIMIZED") 
         else:
             pass
-            # log_order_decision(DB_PARAMS, item, "REJECTED", 0, "OPTIMIZED")
             
     # Return the key metrics for comparison
-    print(f"  ✅ DAA Optimization Complete. Profit: Rs {total_expected_profit:,.2f}, Cost: Rs {total_cost_spent:,.2f}")
+    print(f"  ✅ Knapsack Algorithmic Optimization Complete. Profit: Rs {total_expected_profit:,.2f}, Cost: Rs {total_cost_spent:,.2f}")
     return total_expected_profit, total_cost_spent
 
 
@@ -174,7 +171,7 @@ def run_baseline_optimization(inventory_list, budget_limit):
     """
     print(f"\n--- Running BASELINE OPTIMIZATION (Cheapest First) ---")
     
-    # Step 1: Sort by non-optimal choice (Cost, ascending) -> BASELINE
+    # Sort by non-optimal choice (Cost, ascending)
     sorted_list = sorted(inventory_list, key=lambda item: item.order_cost, reverse=False)
 
     current_budget = budget_limit
@@ -189,10 +186,8 @@ def run_baseline_optimization(inventory_list, budget_limit):
             current_budget -= cost
             total_cost_spent += cost
             total_expected_profit += item.order_value
-            # log_order_decision(DB_PARAMS, item, "SELECTED", cost, "BASELINE") 
         else:
             pass
-            # log_order_decision(DB_PARAMS, item, "REJECTED", 0, "BASELINE")
             
     # Return the key metrics for comparison
     print(f"  ❌ Baseline Complete. Profit: Rs {total_expected_profit:,.2f}, Cost: Rs {total_cost_spent:,.2f}")
@@ -231,61 +226,72 @@ if __name__ == '__main__':
     # Convert list of Product objects to DataFrame for easy manipulation
     df_all = pd.DataFrame([item.get_dict() for item in inventory_items])
 
-    # 3. Run BOTH Optimization Models for Comparison
-    # We must use a DEEP COPY of the inventory_items for the DAA to ensure the list is clean
+    # 3. Run BOTH Optimization Models for Comparison (No logging yet)
     
     # A. Run OPTIMIZED (Greedy Knapsack)
-    optimized_profit, optimized_cost = run_daa_optimization(inventory_items.copy(), DAILY_BUDGET)
+    optimized_profit, optimized_cost = run_knapsack_optimization(inventory_items.copy(), DAILY_BUDGET)
     
     # B. Run BASELINE (Cheapest First)
     baseline_profit, baseline_cost = run_baseline_optimization(inventory_items.copy(), DAILY_BUDGET)
     
-    # 4. Run the DAA Optimization a third time to get the individual selected/rejected lists for the Diverging Chart
-    # This is slightly redundant but necessary to get the item lists (not just the totals)
     
-    # NOTE: The original run_daa_optimization in previous versions returned the lists and totals.
-    # To keep the optimization logic clear and separate, we'll revert to the list-returning structure
-    # for the FINAL run that logs to DB and generates the diverging chart.
+    # 4. Run the Knapsack Algorithmic Optimization a third time for FINAL LOGGING and Reporting
+    print("\n--- Running Final Knapsack Algorithmic Allocation for Detailed Reporting & AUDIT LOGGING ---")
     
-    # We will modify run_daa_optimization to return lists and totals.
+    log_conn = None # Initialize connection outside try block
     
-    # --- Re-running final optimization to get detailed lists (Selected/Rejected) ---
-    print("\n--- Running Final DAA Allocation for Detailed Reporting ---")
-    
-    # Reset inventory_items to original data for the final run
-    final_inventory = fetch_low_stock_products(DB_PARAMS)
-    final_inventory.sort(key=lambda item: item.calculate_priority_score(), reverse=True)
-    
-    selected = []
-    rejected = []
-    current_budget = DAILY_BUDGET
-    total_cost_spent_final = 0
-    total_expected_profit_final = 0
-    
-    for item in final_inventory:
-        cost = item.order_cost
-        if cost <= current_budget:
-            selected.append(item)
-            current_budget -= cost
-            total_cost_spent_final += cost
-            total_expected_profit_final += item.order_value
-            log_order_decision(DB_PARAMS, item, "SELECTED", cost, "OPTIMIZED")
-        else:
-            rejected.append(item)
-            log_order_decision(DB_PARAMS, item, "REJECTED", 0, "OPTIMIZED")
+    try:
+        # Establish a single connection for the entire logging process
+        log_conn = psycopg2.connect(**DB_PARAMS)
+        
+        # Sort the final inventory list by priority score
+        final_inventory = sorted(inventory_items.copy(), key=lambda item: item.calculate_priority_score(), reverse=True)
+        
+        selected = []
+        rejected = []
+        current_budget = DAILY_BUDGET
+        total_cost_spent_final = 0
+        total_expected_profit_final = 0
+        
+        for item in final_inventory:
+            cost = item.order_cost
+            if cost <= current_budget:
+                selected.append(item)
+                current_budget -= cost
+                total_cost_spent_final += cost
+                total_expected_profit_final += item.order_value
+                # Log using the single, open connection
+                log_order_decision(log_conn, item, "SELECTED", cost, "OPTIMIZED")
+            else:
+                rejected.append(item)
+                # Log using the single, open connection
+                log_order_decision(log_conn, item, "REJECTED", 0, "OPTIMIZED")
+                
+        # Commit all logs in one transaction after the loop finishes
+        log_conn.commit()
+        print(f"✅ Final Knapsack algorithmic Allocation Complete. {len(selected)} items selected and committed to psoe_audit_log.")
+
+    except psycopg2.Error as e:
+        print(f"❌ FATAL ERROR DURING LOGGING TRANSACTION: {e}")
+        if log_conn:
+            log_conn.rollback()
+            print("Audit log transaction rolled back.")
+        sys.exit(1)
+
+    finally:
+        if log_conn:
+            log_conn.close()
             
-    print(f"✅ Final DAA Allocation Complete. {len(selected)} items selected.")
-    
     
     print("\n--- Generating Final Visualizations ---")
     
     # 5. Generate Visualizations
     try:
-        # Image 1: Optimized vs. Baseline Comparison (The new visual you requested)
+        # Image 1: Optimized vs. Baseline Comparison
         generate_optimization_comparison_chart(optimized_profit, baseline_profit, optimized_cost, baseline_cost)
         print("Image 1: 'optimization_comparison_chart.png' saved (Value Proof).")
 
-        # Image 2: Budget Allocation Chart (Diverging Visual, now using final run data)
+        # Image 2: Budget Allocation Chart
         generate_budget_allocation_chart(selected, rejected, DAILY_BUDGET, total_cost_spent_final)
         print("Image 2: 'budget_allocation_diverging_chart.png' saved (Decision Flow).")
         
